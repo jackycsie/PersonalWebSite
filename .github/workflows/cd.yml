@@ -69,45 +69,46 @@ jobs:
         
     - name: Create or update Kubernetes resources
       run: |
-        # 檢查 deployment 是否存在
-        if ! kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
-          echo "Creating new deployment..."
-          
-          # 創建 deployment
-          kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
-            --image=${{ steps.build-image.outputs.image }} \
-            --port=8080 \
-            -n ${{ env.K8S_NAMESPACE }}
-            
-          # 添加 imagePullSecrets 到 deployment
-          kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
-            -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
-            -n ${{ env.K8S_NAMESPACE }}
-            
-          # 創建 service
-          kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
-            --port=80 \
-            --target-port=8080 \
-            --type=LoadBalancer \
-            -n ${{ env.K8S_NAMESPACE }}
-            
-        else
-          echo "Updating existing deployment..."
-          
-          # 檢查現有 deployment 的容器名稱
-          CONTAINER_NAME=$(kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].name}')
-          echo "Found container name: $CONTAINER_NAME"
-          
-          # 更新 deployment 的映像標籤
-          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
-            $CONTAINER_NAME=${{ steps.build-image.outputs.image }} \
-            -n ${{ env.K8S_NAMESPACE }}
-            
-          # 確保 imagePullSecrets 存在
-          kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
-            -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
-            -n ${{ env.K8S_NAMESPACE }}
+        # 先清理已存在的資源，避免衝突
+        echo "檢查並清理已存在的資源..."
+        
+        # 檢查並刪除已存在的 service
+        if kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
+          echo "刪除已存在的 service: ${{ env.DEPLOYMENT_NAME }}"
+          kubectl delete service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          # 等待 service 完全刪除
+          sleep 5
         fi
+        
+        # 檢查並刪除已存在的 deployment
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
+          echo "刪除已存在的 deployment: ${{ env.DEPLOYMENT_NAME }}"
+          kubectl delete deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          # 等待 deployment 完全刪除
+          sleep 10
+        fi
+        
+        echo "創建新的 deployment..."
+        
+        # 創建 deployment
+        kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
+          --image=${{ steps.build-image.outputs.image }} \
+          --port=8080 \
+          -n ${{ env.K8S_NAMESPACE }}
+          
+        # 添加 imagePullSecrets 到 deployment
+        kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
+          -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
+          -n ${{ env.K8S_NAMESPACE }}
+          
+        echo "創建新的 service..."
+        
+        # 創建 service
+        kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
+          --port=80 \
+          --target-port=8080 \
+          --type=LoadBalancer \
+          -n ${{ env.K8S_NAMESPACE }}
         
     - name: Deploy to Kubernetes
       run: |
