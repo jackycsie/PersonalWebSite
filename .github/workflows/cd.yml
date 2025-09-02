@@ -13,7 +13,7 @@ env:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # 改為使用 self-hosted runner
     
     steps:
     - name: Checkout code
@@ -40,32 +40,12 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-        
-    - name: Configure kubectl for Kubernetes
+    - name: Check kubectl access
       run: |
-        # 設定 Kubernetes 集群配置
-        echo "${{ secrets.K8S_CLUSTER_CA }}" | base64 -d > ca.crt
-        echo "${{ secrets.K8S_CLIENT_CERT }}" | base64 -d > client.crt
-        echo "${{ secrets.K8S_CLIENT_KEY }}" | base64 -d > client.key
-        
-        kubectl config set-cluster kubernetes \
-          --server=${{ secrets.K8S_CLUSTER_URL }} \
-          --certificate-authority=ca.crt
-          
-        kubectl config set-credentials kubernetes-admin \
-          --client-certificate=client.crt \
-          --client-key=client.key
-          
-        kubectl config set-context kubernetes-admin@kubernetes \
-          --cluster=kubernetes \
-          --user=kubernetes-admin \
-          --namespace=${{ env.K8S_NAMESPACE }}
-          
-        kubectl config use-context kubernetes-admin@kubernetes
+        # 檢查 kubectl 是否可用（因為 runner 已經在集群內）
+        kubectl version --client
+        kubectl cluster-info
+        kubectl get nodes
         
     - name: Deploy to Kubernetes
       run: |
