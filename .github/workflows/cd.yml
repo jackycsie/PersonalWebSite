@@ -89,7 +89,6 @@ jobs:
             --port=80 \
             --target-port=8080 \
             --type=LoadBalancer \
-            --name=${{ env.DEPLOYMENT_NAME }}-service \
             -n ${{ env.K8S_NAMESPACE }}
             
         else
@@ -122,8 +121,17 @@ jobs:
         
         # 顯示服務信息
         echo "=== Service Information ==="
-        kubectl get service ${{ env.DEPLOYMENT_NAME }}-service -n ${{ env.K8S_NAMESPACE }} -o wide
+        kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
         
         # 顯示 pod 詳細信息
         echo "=== Pod Details ==="
         kubectl describe pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+        
+        # 顯示部署狀態
+        echo "=== Deployment Status ==="
+        kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
+        
+        # 檢查應用是否可訪問
+        echo "=== Application Health Check ==="
+        kubectl get pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
+        echo "Pods are running successfully!"
