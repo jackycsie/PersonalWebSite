@@ -73,68 +73,25 @@ jobs:
         if ! kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
           echo "Creating new deployment..."
           
-          # 創建 deployment 配置文件
-          cat << 'EOF' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${{ env.DEPLOYMENT_NAME }}
-  namespace: ${{ env.K8S_NAMESPACE }}
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: ${{ env.DEPLOYMENT_NAME }}
-  template:
-    metadata:
-      labels:
-        app: ${{ env.DEPLOYMENT_NAME }}
-    spec:
-      imagePullSecrets:
-      - name: ecr-secret
-      containers:
-      - name: app
-        image: ${{ steps.build-image.outputs.image }}
-        ports:
-        - containerPort: 8080
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-EOF
-          
+          # 創建 deployment
+          kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
+            --image=${{ steps.build-image.outputs.image }} \
+            --port=8080 \
+            -n ${{ env.K8S_NAMESPACE }}
+            
+          # 添加 imagePullSecrets 到 deployment
+          kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
+            -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
+            -n ${{ env.K8S_NAMESPACE }}
+            
           # 創建 service
-          cat << 'EOF' | kubectl apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${{ env.DEPLOYMENT_NAME }}-service
-  namespace: ${{ env.K8S_NAMESPACE }}
-spec:
-  selector:
-    app: ${{ env.DEPLOYMENT_NAME }}
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8080
-  type: LoadBalancer
-EOF
-          
+          kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
+            --port=80 \
+            --target-port=8080 \
+            --type=LoadBalancer \
+            --name=${{ env.DEPLOYMENT_NAME }}-service \
+            -n ${{ env.K8S_NAMESPACE }}
+            
         else
           echo "Updating existing deployment..."
           # 更新 deployment 的映像標籤
