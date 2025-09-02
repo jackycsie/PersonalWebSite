@@ -94,9 +94,19 @@ jobs:
             
         else
           echo "Updating existing deployment..."
+          
+          # 檢查現有 deployment 的容器名稱
+          CONTAINER_NAME=$(kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].name}')
+          echo "Found container name: $CONTAINER_NAME"
+          
           # 更新 deployment 的映像標籤
           kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
-            app=${{ steps.build-image.outputs.image }} \
+            $CONTAINER_NAME=${{ steps.build-image.outputs.image }} \
+            -n ${{ env.K8S_NAMESPACE }}
+            
+          # 確保 imagePullSecrets 存在
+          kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
+            -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
             -n ${{ env.K8S_NAMESPACE }}
         fi
         
