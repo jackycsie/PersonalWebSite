@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ap-east-2
   ECR_REPOSITORY: my-blog-project
-  K8S_NAMESPACE: default
+  K8S_NAMESPACE: my-blog-project
   DEPLOYMENT_NAME: my-blog-project
 
 jobs:
@@ -16,48 +16,79 @@ jobs:
     runs-on: self-hosted  # 使用 self-hosted runner
     
     steps:
-    - name: Checkout code
+    - name: 📦 Checkout code
       uses: actions/checkout@v4
       
-    - name: Configure AWS credentials
+    - name: 🔑 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: Get ECR login token
+    - name: 🐳 Get ECR login token
       id: ecr-login
       run: |
-        # 使用 AWS CLI 獲取 ECR 登入 token
+        echo "登入 AWS ECR..."
         aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        echo "✅ ECR 登入成功"
         
-    - name: Build, tag, and push image to Amazon ECR
+    - name: 🏗️ Build and push Docker image
       id: build-image
       env:
         ECR_REGISTRY: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         IMAGE_TAG: ${{ github.sha }}
       run: |
+        echo "建置 Docker 映像..."
         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
+        
+        echo "推送映像到 ECR..."
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        
+        echo "✅ 映像推送成功"
         echo "image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
-    - name: Check kubectl access
+    - name: ⚙️ Verify kubectl access
       run: |
-        # 檢查 kubectl 是否可用（因為 runner 已經在集群內）
+        echo "檢查 kubectl 連接..."
         kubectl version --client
         kubectl cluster-info
-        kubectl get nodes
+        echo "✅ kubectl 連接正常"
         
-    - name: Create ECR authentication secret
+    - name: 🧹 Cleanup existing resources
       run: |
-        # 創建或更新 ECR 認證 secret
-        if kubectl get secret ecr-secret -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
-          echo "Updating existing ECR secret..."
-          kubectl delete secret ecr-secret -n ${{ env.K8S_NAMESPACE }}
+        echo "檢查並清理已存在的資源..."
+        
+        # 使用清理腳本
+        if [ -f "scripts/cleanup.sh" ]; then
+          echo "使用清理腳本..."
+          ./scripts/cleanup.sh
+        else
+          echo "手動清理資源..."
+          # 檢查並刪除命名空間（這會刪除其中的所有資源）
+          if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+            echo "刪除命名空間: ${{ env.K8S_NAMESPACE }}"
+            kubectl delete namespace ${{ env.K8S_NAMESPACE }}
+            # 等待命名空間完全刪除
+            while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
+              echo "等待命名空間刪除..."
+              sleep 5
+            done
+          fi
         fi
         
-        echo "Creating new ECR secret..."
+        echo "✅ 資源清理完成"
+        
+    - name: 🔐 Create ECR authentication secret
+      run: |
+        echo "創建 ECR 認證 secret..."
+        
+        # 確保命名空間存在
+        kubectl apply -f k8s/namespace.yaml
+        
+        # 創建 ECR secret
         kubectl create secret docker-registry ecr-secret \
           --docker-server=728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com \
           --docker-username=AWS \
@@ -65,74 +96,72 @@ jobs:
           --docker-email=deploy@myblog.com \
           -n ${{ env.K8S_NAMESPACE }}
         
-        echo "ECR secret created successfully"
+        echo "✅ ECR secret 創建成功"
         
-    - name: Create or update Kubernetes resources
+    - name: 🎯 Update image tag in Kustomization
+      env:
+        IMAGE_TAG: ${{ github.sha }}
       run: |
-        # 先清理已存在的資源，避免衝突
-        echo "檢查並清理已存在的資源..."
+        echo "更新 Kustomization 中的映像標籤..."
+        cd k8s
         
-        # 檢查並刪除已存在的 service
-        if kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
-          echo "刪除已存在的 service: ${{ env.DEPLOYMENT_NAME }}"
-          kubectl delete service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
-          # 等待 service 完全刪除
-          sleep 5
+        # 使用 kustomize 更新映像標籤
+        if command -v kustomize &> /dev/null; then
+          kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        else
+          # 如果沒有 kustomize，直接修改 deployment.yaml
+          sed -i "s|image:.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG|" deployment.yaml
         fi
         
-        # 檢查並刪除已存在的 deployment
-        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
-          echo "刪除已存在的 deployment: ${{ env.DEPLOYMENT_NAME }}"
-          kubectl delete deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
-          # 等待 deployment 完全刪除
-          sleep 10
+        echo "✅ 映像標籤更新為: $IMAGE_TAG"
+        
+    - name: 📋 Deploy Kubernetes resources
+      run: |
+        echo "部署 Kubernetes 資源..."
+        
+        # 使用 kustomize 部署（如果可用）
+        if command -v kustomize &> /dev/null; then
+          echo "使用 Kustomize 部署..."
+          kubectl apply -k k8s/
+        else
+          echo "使用 kubectl 部署..."
+          # 按順序應用配置文件
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
         fi
         
-        echo "創建新的 deployment..."
+        echo "✅ 資源部署完成"
         
-        # 創建 deployment
-        kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
-          --image=${{ steps.build-image.outputs.image }} \
-          --port=8080 \
-          -n ${{ env.K8S_NAMESPACE }}
-          
-        # 添加 imagePullSecrets 到 deployment
-        kubectl patch deployment ${{ env.DEPLOYMENT_NAME }} \
-          -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ecr-secret"}]}}}}' \
-          -n ${{ env.K8S_NAMESPACE }}
-          
-        echo "創建新的 service..."
-        
-        # 創建 service
-        kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
-          --port=80 \
-          --target-port=8080 \
-          --type=LoadBalancer \
-          -n ${{ env.K8S_NAMESPACE }}
-        
-    - name: Deploy to Kubernetes
+    - name: ⏳ Wait for deployment
       run: |
-        # 等待部署完成
-        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
-          -n ${{ env.K8S_NAMESPACE }}
-          
-        # 驗證部署
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }}
-        kubectl get services -n ${{ env.K8S_NAMESPACE }}
+        echo "等待部署完成..."
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        echo "✅ 部署完成"
         
-        # 顯示服務信息
-        echo "=== Service Information ==="
-        kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
+    - name: 📊 Verify deployment
+      run: |
+        echo "驗證部署狀態..."
         
-        # 顯示 pod 詳細信息
-        echo "=== Pod Details ==="
-        kubectl describe pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+        echo "=== Namespace ==="
+        kubectl get namespace ${{ env.K8S_NAMESPACE }}
         
-        # 顯示部署狀態
-        echo "=== Deployment Status ==="
-        kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
+        echo ""
+        echo "=== Pods ==="
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
         
-        # 檢查應用是否可訪問
-        echo "=== Application Health Check ==="
-        kubectl get pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} -o wide
-        echo "Pods are running successfully!"
+        echo ""
+        echo "=== Services ==="
+        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        
+        echo ""
+        echo "=== Deployments ==="
+        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        
+        echo ""
+        echo "=== Service Endpoints ==="
+        kubectl get endpoints -n ${{ env.K8S_NAMESPACE }}
+        
+        echo ""
+        echo "🎉 部署驗證完成！"
