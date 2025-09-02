@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jacky's Tech Journey - 技術部落格</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <div class="brand-icon">
+                    <i class="fas fa-code"></i>
+                </div>
+                <span class="brand-text">Jacky's Tech Journey</span>
+            </div>
+            <div class="nav-menu">
+                <a href="#" class="nav-link active" data-section="home">
+                    <i class="fas fa-home"></i>
+                    <span>首頁</span>
+                </a>
+                <a href="#" class="nav-link" data-section="articles">
+                    <i class="fas fa-newspaper"></i>
+                    <span>文章</span>
+                </a>
+                <a href="#" class="nav-link" data-section="about">
+                    <i class="fas fa-user"></i>
+                    <span>關於</span>
+                </a>
+            </div>
+            <div class="nav-toggle">
+                <i class="fas fa-bars"></i>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Home Section -->
+        <section id="home" class="content-section active">
+            <div class="hero-section">
+                <div class="hero-background">
+                    <div class="hero-particles"></div>
+                    <div class="hero-gradient"></div>
+                </div>
+                <div class="hero-content">
+                    <div class="hero-badge">
+                        <i class="fas fa-rocket"></i>
+                        <span>技術部落格</span>
+                    </div>
+                    <h1 class="hero-title">
+                        <span class="title-line">探索技術的</span>
+                        <span class="title-line highlight">無限可能</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        在這裡分享我在軟體開發、雲端技術和 DevOps 實踐中的經驗和見解
+                    </p>
+                    <div class="hero-actions">
+                        <button class="btn btn-primary" onclick="showSection('articles')">
+                            <i class="fas fa-arrow-right"></i>
+                            開始探索
+                        </button>
+                        <button class="btn btn-outline" onclick="showSection('about')">
+                            <i class="fas fa-user"></i>
+                            認識我
+                        </button>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="floating-card card-1">
+                        <i class="fas fa-microchip"></i>
+                        <span>FastAPI</span>
+                    </div>
+                    <div class="floating-card card-2">
+                        <i class="fas fa-database"></i>
+                        <span>MongoDB</span>
+                    </div>
+                    <div class="floating-card card-3">
+                        <i class="fas fa-docker"></i>
+                        <span>Docker</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-newspaper"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-number" id="totalPosts">1</span>
+                            <span class="stat-label">技術文章</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-tags"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-number" id="totalTags">5</span>
+                            <span class="stat-label">技術標籤</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-code-branch"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-number" id="totalCategories">3</span>
+                            <span class="stat-label">文章分類</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="recent-posts">
+                <div class="section-header">
+                    <h2>最新文章</h2>
+                    <p>探索最新的技術分享和實作經驗</p>
+                </div>
+                <div id="recentPostsList" class="posts-grid">
+                    <!-- Recent posts will be loaded here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Articles Section -->
+        <section id="articles" class="content-section">
+            <div class="section-header">
+                <div class="header-content">
+                    <h2>所有文章</h2>
+                    <p>瀏覽完整的技術文章集合</p>
+                </div>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="categoryFilter">分類</label>
+                        <select id="categoryFilter" class="form-control">
+                            <option value="">所有分類</option>
+                            <option value="technology">技術</option>
+                            <option value="tutorial">教學</option>
+                            <option value="experience">經驗分享</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="tagFilter">標籤</label>
+                        <select id="tagFilter" class="form-control">
+                            <option value="">所有標籤</option>
+                            <option value="python">Python</option>
+                            <option value="fastapi">FastAPI</option>
+                            <option value="docker">Docker</option>
+                            <option value="mongodb">MongoDB</option>
+                            <option value="devops">DevOps</option>
+                        </select>
+                    </div>
+                    <button id="refreshPosts" class="btn btn-primary">
+                        <i class="fas fa-sync-alt"></i>
+                        重新整理
+                    </button>
+                </div>
+            </div>
+            
+            <div id="postsList" class="posts-grid">
+                <!-- Posts will be loaded here -->
+            </div>
+            
+            <div class="pagination-wrapper">
+                <nav class="pagination">
+                    <button id="prevPage" class="btn btn-outline">
+                        <i class="fas fa-chevron-left"></i>
+                        上一頁
+                    </button>
+                    <span id="pageInfo" class="page-info">第 1 頁</span>
+                    <button id="nextPage" class="btn btn-outline">
+                        下一頁
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </nav>
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section id="about" class="content-section">
+            <div class="section-header">
+                <h2>關於我</h2>
+                <p>認識這位熱愛技術的軟體工程師</p>
+            </div>
+            <div class="about-content">
+                <div class="about-card">
+                    <div class="about-header">
+                        <div class="about-avatar">
+                            <div class="avatar-bg">
+                                <i class="fas fa-user-circle"></i>
+                            </div>
+                        </div>
+                        <div class="about-info">
+                            <h3>Jacky Huang</h3>
+                            <p class="about-title">Software Engineer | Cloud Computing | DevOps</p>
+                        </div>
+                    </div>
+                    <div class="about-body">
+                        <p class="about-description">
+                            我是一名熱愛技術的軟體工程師，專注於雲端技術和 DevOps 實踐。
+                            在這個部落格中，我會分享我在技術學習和專案開發中的心得和經驗。
+                        </p>
+                        <div class="about-skills">
+                            <h4>技術技能</h4>
+                            <div class="skills-grid">
+                                <span class="skill-tag">Python</span>
+                                <span class="skill-tag">FastAPI</span>
+                                <span class="skill-tag">Docker</span>
+                                <span class="skill-tag">MongoDB</span>
+                                <span class="skill-tag">AWS</span>
+                                <span class="skill-tag">Kubernetes</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Article Modal -->
+    <div id="articleModal" class="modal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 id="modalTitle" class="modal-title"></h5>
+                    <button type="button" class="close" onclick="closeArticleModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" id="modalContent">
+                    <!-- Article content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeArticleModal()">
+                        <i class="fas fa-times"></i>
+                        關閉
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="loading-spinner">
+        <div class="spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+        </div>
+        <p>載入中...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Custom JavaScript -->
+    <script src="/static/script.js"></script>
+</body>
+</html>
