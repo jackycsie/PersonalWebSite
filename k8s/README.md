@@ -8,9 +8,8 @@
 k8s/
 ├── namespace.yaml      # 命名空間定義
 ├── configmap.yaml      # 應用程式配置
-├── secret.yaml         # ECR 認證密鑰（模板）
 ├── deployment.yaml     # Pod 部署配置
-├── service.yaml        # 服務暴露配置
+├── service.yaml        # NodePort 服務配置
 ├── kustomization.yaml  # Kustomize 配置
 └── README.md          # 說明文件
 ```
@@ -20,12 +19,11 @@ k8s/
 ```
 Namespace: my-blog-project
 ├── ConfigMap: my-blog-project-config
-├── Secret: ecr-secret
 ├── Deployment: my-blog-project
 │   ├── ReplicaSet: my-blog-project-xxx
 │   └── Pods: my-blog-project-xxx-yyy (x2)
-└── Service: my-blog-project
-    └── LoadBalancer → Pods:8080
+└── Service: my-blog-project (NodePort:30080)
+    └── 外部訪問: http://[NODE-IP]:30080
 ```
 
 ## 🚀 部署方式
@@ -39,7 +37,6 @@ kubectl apply -k k8s/
 ```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/configmap.yaml
-# ECR secret 需要動態創建
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 ```
@@ -47,6 +44,22 @@ kubectl apply -f k8s/service.yaml
 ### 方法 3: 使用部署腳本
 ```bash
 ./scripts/deploy.sh [image-tag]
+```
+
+## 🌐 外部訪問
+
+**服務類型**: NodePort  
+**節點端口**: 30080  
+**訪問方式**: `http://[NODE-IP]:30080`
+
+### 獲取節點 IP
+```bash
+kubectl get nodes -o wide
+```
+
+### 測試連接
+```bash
+curl http://[NODE-IP]:30080
 ```
 
 ## 🧹 清理資源
@@ -59,7 +72,12 @@ kubectl apply -f k8s/service.yaml
 
 - **namespace.yaml**: 創建獨立的命名空間，隔離資源
 - **configmap.yaml**: 存儲應用程式的非敏感配置
-- **secret.yaml**: ECR 認證密鑰模板（由 CI/CD 動態創建）
 - **deployment.yaml**: 定義 Pod 模板、副本數、健康檢查等
-- **service.yaml**: 暴露服務，提供負載均衡
+- **service.yaml**: 暴露服務，使用 NodePort 類型，端口 30080
 - **kustomization.yaml**: 管理資源部署順序和映像標籤
+
+## ⚠️ 注意事項
+
+- NodePort 30080 是固定的，確保不會與其他服務衝突
+- 只能通過節點 IP 訪問，不是真正的負載均衡
+- 適合開發、測試或內部使用環境

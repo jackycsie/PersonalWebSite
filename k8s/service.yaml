@@ -7,11 +7,12 @@ metadata:
     app: my-blog-project
     service: web
 spec:
-  type: LoadBalancer
+  type: NodePort
   ports:
   - name: http
     port: 80
     targetPort: http
+    nodePort: 30080  # 固定節點端口，範圍 30000-32767
     protocol: TCP
   selector:
     app: my-blog-project

@@ -9,9 +9,8 @@
 k8s/
 ├── 🏷️  namespace.yaml      → 創建專屬命名空間
 ├── ⚙️  configmap.yaml      → 應用程式配置
-├── 🔐 secret.yaml          → ECR 認證密鑰
 ├── 🚀 deployment.yaml      → Pod 部署定義
-├── 🌐 service.yaml         → 負載均衡服務
+├── 🌐 service.yaml         → NodePort 服務 (端口 30080)
 ├── 📦 kustomization.yaml   → 部署管理
 └── 📖 README.md           → 配置說明
 ```
@@ -22,16 +21,15 @@ k8s/
 graph TB
     NS[Namespace: my-blog-project]
     CM[ConfigMap: my-blog-project-config]
-    SEC[Secret: ecr-secret]
     DEP[Deployment: my-blog-project]
     RS[ReplicaSet: my-blog-project-xxx]
     POD1[Pod: my-blog-project-xxx-yyy]
     POD2[Pod: my-blog-project-xxx-zzz]
     SVC[Service: my-blog-project]
-    LB[LoadBalancer]
+    NODE1[Node 1: 10.0.5.83]
+    NODE2[Node 2: 10.0.7.10]
 
     NS --> CM
-    NS --> SEC
     NS --> DEP
     NS --> SVC
     
@@ -41,10 +39,12 @@ graph TB
     
     SVC --> POD1
     SVC --> POD2
-    SVC --> LB
     
-    DEP -.-> SEC
-    DEP -.-> CM
+    POD1 --> NODE1
+    POD2 --> NODE2
+    
+    SVC -.->|NodePort:30080| NODE1
+    SVC -.->|NodePort:30080| NODE2
 ```
 
 ## 🔄 部署流程
@@ -71,6 +71,22 @@ graph TB
 ./scripts/deploy.sh [image-tag]
 ```
 
+## 🌐 外部訪問
+
+**服務類型**: NodePort  
+**節點端口**: 30080  
+**訪問方式**: `http://[NODE-IP]:30080`
+
+### 獲取節點 IP
+```bash
+kubectl get nodes -o wide
+```
+
+### 測試連接
+```bash
+curl http://[NODE-IP]:30080
+```
+
 ## 🎯 優勢
 
 ✅ **模組化**: 每個資源獨立管理  
@@ -79,6 +95,7 @@ graph TB
 ✅ **版本控制**: 每個配置都有版本追蹤  
 ✅ **重用性**: 配置可以在不同環境重用  
 ✅ **故障排除**: 容易定位問題所在的資源  
+✅ **立即可用**: NodePort 不需要等待外部負載均衡器  
 
 ## 🔧 管理命令
 
@@ -97,4 +114,7 @@ kubectl logs -n my-blog-project -l app=my-blog-project
 # 描述資源詳情
 kubectl describe deployment my-blog-project -n my-blog-project
 kubectl describe service my-blog-project -n my-blog-project
+
+# 獲取節點信息
+kubectl get nodes -o wide
 ```
