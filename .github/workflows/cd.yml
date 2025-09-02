@@ -49,25 +49,92 @@ jobs:
         kubectl cluster-info
         kubectl get nodes
         
+    - name: Create ECR authentication secret
+      run: |
+        # 創建或更新 ECR 認證 secret
+        if kubectl get secret ecr-secret -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
+          echo "Updating existing ECR secret..."
+          kubectl delete secret ecr-secret -n ${{ env.K8S_NAMESPACE }}
+        fi
+        
+        echo "Creating new ECR secret..."
+        kubectl create secret docker-registry ecr-secret \
+          --docker-server=728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com \
+          --docker-username=AWS \
+          --docker-password=$(aws ecr get-login-password --region ${{ env.AWS_REGION }}) \
+          --docker-email=deploy@myblog.com \
+          -n ${{ env.K8S_NAMESPACE }}
+        
+        echo "ECR secret created successfully"
+        
     - name: Create or update Kubernetes resources
       run: |
         # 檢查 deployment 是否存在
         if ! kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
           echo "Creating new deployment..."
           
-          # 創建 deployment
-          kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
-            --image=${{ steps.build-image.outputs.image }} \
-            --port=8080 \
-            -n ${{ env.K8S_NAMESPACE }}
-            
+          # 創建 deployment 配置文件
+          cat << EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ${{ env.DEPLOYMENT_NAME }}
+            namespace: ${{ env.K8S_NAMESPACE }}
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: ${{ env.DEPLOYMENT_NAME }}
+            template:
+              metadata:
+                labels:
+                  app: ${{ env.DEPLOYMENT_NAME }}
+              spec:
+                imagePullSecrets:
+                - name: ecr-secret
+                containers:
+                - name: app
+                  image: ${{ steps.build-image.outputs.image }}
+                  ports:
+                  - containerPort: 8080
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "256Mi"
+                      cpu: "200m"
+                  livenessProbe:
+                    httpGet:
+                      path: /healthz
+                      port: 8080
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /healthz
+                      port: 8080
+                    initialDelaySeconds: 5
+                    periodSeconds: 5
+          EOF
+          
           # 創建 service
-          kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
-            --port=80 \
-            --target-port=8080 \
-            --type=LoadBalancer \
-            -n ${{ env.K8S_NAMESPACE }}
-            
+          cat << EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: ${{ env.DEPLOYMENT_NAME }}-service
+            namespace: ${{ env.K8S_NAMESPACE }}
+          spec:
+            selector:
+              app: ${{ env.DEPLOYMENT_NAME }}
+            ports:
+            - protocol: TCP
+              port: 80
+              targetPort: 8080
+            type: LoadBalancer
+          EOF
+          
         else
           echo "Updating existing deployment..."
           # 更新 deployment 的映像標籤
@@ -89,3 +156,7 @@ jobs:
         # 顯示服務信息
         echo "=== Service Information ==="
         kubectl get service ${{ env.DEPLOYMENT_NAME }}-service -n ${{ env.K8S_NAMESPACE }} -o wide
+        
+        # 顯示 pod 詳細信息
+        echo "=== Pod Details ==="
+        kubectl describe pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
