@@ -13,7 +13,7 @@ env:
 
 jobs:
   deploy:
-    runs-on: self-hosted  # 改為使用 self-hosted runner
+    runs-on: self-hosted  # 使用 self-hosted runner
     
     steps:
     - name: Checkout code
@@ -26,19 +26,21 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-      
+    - name: Get ECR login token
+      id: ecr-login
+      run: |
+        # 使用 AWS CLI 獲取 ECR 登入 token
+        aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
       env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REGISTRY: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
     - name: Check kubectl access
       run: |
@@ -47,13 +49,35 @@ jobs:
         kubectl cluster-info
         kubectl get nodes
         
+    - name: Create or update Kubernetes resources
+      run: |
+        # 檢查 deployment 是否存在
+        if ! kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} &> /dev/null; then
+          echo "Creating new deployment..."
+          
+          # 創建 deployment
+          kubectl create deployment ${{ env.DEPLOYMENT_NAME }} \
+            --image=${{ steps.build-image.outputs.image }} \
+            --port=8080 \
+            -n ${{ env.K8S_NAMESPACE }}
+            
+          # 創建 service
+          kubectl expose deployment ${{ env.DEPLOYMENT_NAME }} \
+            --port=80 \
+            --target-port=8080 \
+            --type=LoadBalancer \
+            -n ${{ env.K8S_NAMESPACE }}
+            
+        else
+          echo "Updating existing deployment..."
+          # 更新 deployment 的映像標籤
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            app=${{ steps.build-image.outputs.image }} \
+            -n ${{ env.K8S_NAMESPACE }}
+        fi
+        
     - name: Deploy to Kubernetes
       run: |
-        # 更新 deployment 的映像標籤
-        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
-          app=${{ steps.build-image.outputs.image }} \
-          -n ${{ env.K8S_NAMESPACE }}
-          
         # 等待部署完成
         kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
           -n ${{ env.K8S_NAMESPACE }}
@@ -61,3 +85,7 @@ jobs:
         # 驗證部署
         kubectl get pods -n ${{ env.K8S_NAMESPACE }}
         kubectl get services -n ${{ env.K8S_NAMESPACE }}
+        
+        # 顯示服務信息
+        echo "=== Service Information ==="
+        kubectl get service ${{ env.DEPLOYMENT_NAME }}-service -n ${{ env.K8S_NAMESPACE }} -o wide
