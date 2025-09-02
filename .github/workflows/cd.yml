@@ -1,0 +1,83 @@
+name: CD - Deploy to AWS K8s
+
+on:
+  push:
+    branches: [ main ]  # 只有 main 分支觸發部署
+  workflow_dispatch:    # 允許手動觸發
+
+env:
+  AWS_REGION: ap-east-2
+  ECR_REPOSITORY: my-blog-project
+  K8S_NAMESPACE: default
+  DEPLOYMENT_NAME: my-blog-project
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: Configure kubectl for Kubernetes
+      run: |
+        # 設定 Kubernetes 集群配置
+        echo "${{ secrets.K8S_CLUSTER_CA }}" | base64 -d > ca.crt
+        echo "${{ secrets.K8S_CLIENT_CERT }}" | base64 -d > client.crt
+        echo "${{ secrets.K8S_CLIENT_KEY }}" | base64 -d > client.key
+        
+        kubectl config set-cluster kubernetes \
+          --server=${{ secrets.K8S_CLUSTER_URL }} \
+          --certificate-authority=ca.crt
+          
+        kubectl config set-credentials kubernetes-admin \
+          --client-certificate=client.crt \
+          --client-key=client.key
+          
+        kubectl config set-context kubernetes-admin@kubernetes \
+          --cluster=kubernetes \
+          --user=kubernetes-admin \
+          --namespace=${{ env.K8S_NAMESPACE }}
+          
+        kubectl config use-context kubernetes-admin@kubernetes
+        
+    - name: Deploy to Kubernetes
+      run: |
+        # 更新 deployment 的映像標籤
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+          app=${{ steps.build-image.outputs.image }} \
+          -n ${{ env.K8S_NAMESPACE }}
+          
+        # 等待部署完成
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.K8S_NAMESPACE }}
+          
+        # 驗證部署
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+        kubectl get services -n ${{ env.K8S_NAMESPACE }}
