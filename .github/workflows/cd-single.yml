@@ -58,56 +58,38 @@ jobs:
         kubectl cluster-info
         echo "✅ kubectl 連接正常"
         
-    - name: 🧹 Force cleanup existing resources
+    - name: 🔍 Check current deployment status
       run: |
-        echo "🧹 強制清理所有現有資源..."
-        
-        # 檢查命名空間是否存在
-        if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
-          echo "🗑️  強制刪除命名空間: ${{ env.K8S_NAMESPACE }}"
-          
-          # 強制刪除所有資源
-          kubectl delete all --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete deployment --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete service --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete configmap --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete secret --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete pvc --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          kubectl delete pv --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          
-          # 強制刪除命名空間
-          kubectl delete namespace ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
-          
-          # 等待命名空間完全刪除
-          echo "⏳ 等待命名空間完全刪除..."
-          while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
-            echo "等待命名空間 ${{ env.K8S_NAMESPACE }} 完全刪除..."
-            sleep 5
-          done
-          
-          echo "✅ 命名空間 ${{ env.K8S_NAMESPACE }} 已完全刪除"
-        else
-          echo "ℹ️  命名空間 ${{ env.K8S_NAMESPACE }} 不存在，跳過清理"
-        fi
-        
-        echo "🎉 強制清理完成！"
-        
-    - name: 🔐 Create ECR authentication secret
-      run: |
-        echo "創建 ECR 認證 secret..."
+        echo "🔍 檢查當前部署狀態..."
         
         # 確保命名空間存在
         kubectl apply -f k8s/namespace.yaml
         
-        # 創建 ECR secret
-        kubectl create secret docker-registry ecr-secret \
-          --docker-server=728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com \
-          --docker-username=AWS \
-          --docker-password=$(aws ecr get-login-password --region ${{ env.AWS_REGION }}) \
-          --docker-email=deploy@myblog.com \
-          -n ${{ env.K8S_NAMESPACE }}
+        # 檢查當前部署是否存在
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "📊 發現現有部署，將執行滾動更新..."
+          echo "=== 當前部署狀態 ==="
+          kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "=== 當前 Pod 狀態 ==="
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        else
+          echo "🆕 沒有現有部署，將創建新部署..."
+        fi
         
-        echo "✅ ECR secret 創建成功"
+        # 創建 ECR secret（如果不存在）
+        if ! kubectl get secret ecr-secret -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🔐 創建 ECR 認證 secret..."
+          kubectl create secret docker-registry ecr-secret \
+            --docker-server=728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com \
+            --docker-username=AWS \
+            --docker-password=$(aws ecr get-login-password --region ${{ env.AWS_REGION }}) \
+            --docker-email=deploy@myblog.com \
+            -n ${{ env.K8S_NAMESPACE }}
+          echo "✅ ECR secret 創建成功"
+        else
+          echo "✅ ECR secret 已存在"
+        fi
         
     - name: 🎯 Update image tag in Kustomization
       env:
@@ -151,21 +133,54 @@ jobs:
         
         # 先檢查 Pod 狀態
         echo "=== 檢查 Pod 狀態 ==="
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-single -o wide
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o wide
         
         echo ""
         echo "=== 檢查 Pod 事件 ==="
-        kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by='.lastTimestamp' | grep -E "(my-blog-project-single|Failed|Error)" | tail -10
+        kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by='.lastTimestamp' | grep -E "(${{ env.DEPLOYMENT_NAME }}|Failed|Error)" | tail -10
         
         echo ""
         echo "=== 檢查部署狀態 ==="
-        kubectl describe deployment my-blog-project-single -n ${{ env.K8S_NAMESPACE }}
+        kubectl describe deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
         
         # 等待部署完成，增加超時時間
         echo ""
         echo "開始等待部署完成..."
-        kubectl rollout status deployment/my-blog-project-single -n ${{ env.K8S_NAMESPACE }} --timeout=600s
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=600s
         echo "✅ 部署完成"
+        
+    - name: 🏥 Health check
+      run: |
+        echo "🏥 執行健康檢查..."
+        
+        # 等待服務就緒
+        echo "⏳ 等待服務就緒..."
+        sleep 15
+        
+        # 檢查服務是否響應
+        echo "🔍 檢查服務響應..."
+        POD_NAME=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o jsonpath='{.items[0].metadata.name}')
+        
+        if [ -n "$POD_NAME" ]; then
+          echo "📊 測試 Pod: $POD_NAME"
+          
+          # 檢查 Pod 是否運行
+          if kubectl get pod $POD_NAME -n ${{ env.K8S_NAMESPACE }} | grep -q "Running"; then
+            echo "✅ Pod 狀態正常"
+            
+            # 檢查服務端口
+            if kubectl exec -n ${{ env.K8S_NAMESPACE }} $POD_NAME -- curl -s http://localhost:4000/ >/dev/null 2>&1; then
+              echo "✅ 服務健康檢查通過"
+            else
+              echo "⚠️  服務健康檢查未通過，但 Pod 已運行"
+            fi
+          else
+            echo "❌ Pod 狀態異常"
+            kubectl describe pod $POD_NAME -n ${{ env.K8S_NAMESPACE }}
+          fi
+        else
+          echo "❌ 沒有找到相關的 Pod"
+        fi
         
     - name: 📊 Verify deployment
       run: |
@@ -176,15 +191,15 @@ jobs:
         
         echo ""
         echo "=== Pods ==="
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-single
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
         
         echo ""
         echo "=== Services ==="
-        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-single
+        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
         
         echo ""
         echo "=== Deployments ==="
-        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-single
+        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
         
         echo ""
         echo "=== Service Endpoints ==="
@@ -195,3 +210,24 @@ jobs:
         echo ""
         echo "🌐 訪問方式："
         echo "   Jekyll 網站: http://[NODE-IP]:30081"
+        
+    - name: 🔄 Rollback on failure
+      if: failure()
+      run: |
+        echo "❌ 部署失敗，執行回滾..."
+        
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🔄 回滾到上一個版本..."
+          kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          
+          echo "⏳ 等待回滾完成..."
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ 回滾成功"
+          else
+            echo "❌ 回滾失敗，請手動檢查"
+          fi
+        else
+          echo "ℹ️  沒有部署可以回滾"
+        fi
