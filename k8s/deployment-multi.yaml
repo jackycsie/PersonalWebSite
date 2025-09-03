@@ -65,7 +65,7 @@ spec:
           
       # 容器 2: Jekyll 網站
       - name: jekyll-site
-        image: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jackycsie-github-io:latest
+        image: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jekyll-site:latest
         ports:
         - name: jekyll
           containerPort: 4000

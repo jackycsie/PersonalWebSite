@@ -43,16 +43,19 @@ jobs:
         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
         
-        echo "推送 FastAPI 映像到 ECR..."
+        echo "建置 Jekyll 網站映像..."
+        docker build -f jekyll-site/Dockerfile.prod -t $ECR_REGISTRY/jekyll-site:$IMAGE_TAG jekyll-site/
+        docker build -f jekyll-site/Dockerfile.prod -t $ECR_REGISTRY/jekyll-site:latest jekyll-site/
+        
+        echo "推送所有映像到 ECR..."
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        docker push $ECR_REGISTRY/jekyll-site:$IMAGE_TAG
+        docker push $ECR_REGISTRY/jekyll-site:latest
         
-        echo "✅ FastAPI 映像推送成功"
+        echo "✅ 所有映像推送成功"
         echo "fastapi-image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
-        
-        # 暫時跳過 Jekyll 映像建置，直到路徑問題解決
-        echo "⚠️  暫時跳過 Jekyll 映像建置 (路徑問題)"
-        echo "jekyll-image=skipped" >> $GITHUB_OUTPUT
+        echo "jekyll-image=$ECR_REGISTRY/jekyll-site:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
     - name: ⚙️ Verify kubectl access
       run: |
@@ -123,21 +126,20 @@ jobs:
       run: |
         echo "部署 Kubernetes 資源..."
         
-        # 暫時使用單容器配置部署，直到多容器配置問題解決
+        # 使用多容器配置部署
         if command -v kustomize &> /dev/null; then
-          echo "使用 Kustomize 部署單容器配置..."
-          kubectl apply -k k8s/
+          echo "使用 Kustomize 部署多容器配置..."
+          kubectl apply -k k8s/kustomization-multi.yaml
         else
-          echo "使用 kubectl 部署單容器配置..."
+          echo "使用 kubectl 部署多容器配置..."
           # 按順序應用配置文件
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/deployment-multi.yaml
+          kubectl apply -f k8s/service-multi.yaml
         fi
         
-        echo "✅ 單容器資源部署完成"
-        echo "⚠️  多容器配置暫時跳過，等待路徑問題解決"
+        echo "✅ 多容器資源部署完成"
         
     - name: ⏳ Wait for deployment
       run: |

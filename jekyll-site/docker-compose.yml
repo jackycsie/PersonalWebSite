@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  jekyll-site:
+    build: .
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - /app/vendor
+      - /app/.bundle
+    environment:
+      - JEKYLL_ENV=development
+    restart: unless-stopped
+    container_name: jacky-personal-site
+
+  # 可選：添加 Nginx 作為反向代理
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./_site:/usr/share/nginx/html:ro
+    depends_on:
+      - jekyll-site
+    restart: unless-stopped
+    container_name: jacky-site-nginx

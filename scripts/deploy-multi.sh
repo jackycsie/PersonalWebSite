@@ -29,7 +29,7 @@ cd k8s
 # 更新映像標籤
 echo "🏷️  更新映像標籤為: $IMAGE_TAG"
 kustomize edit set image 728951503024.dkr.ecr.ap-east-2.amazonaws.com/my-blog-project:$IMAGE_TAG
-kustomize edit set image 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jackycsie-github-io:$IMAGE_TAG
+kustomize edit set image 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jekyll-site:$IMAGE_TAG
 
 # 應用多容器配置
 echo "📋 應用多容器 Kubernetes 配置..."

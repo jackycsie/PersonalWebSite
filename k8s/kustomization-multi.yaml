@@ -20,5 +20,5 @@ commonLabels:
 images:
   - name: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/my-blog-project
     newTag: latest
-  - name: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jackycsie-github-io
+  - name: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jekyll-site
     newTag: latest
