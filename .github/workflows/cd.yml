@@ -122,9 +122,11 @@ jobs:
         # 使用 kustomize 更新映像標籤
         if command -v kustomize &> /dev/null; then
           kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG
         else
-          # 如果沒有 kustomize，直接修改 deployment.yaml
-          sed -i "s|image:.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG|" deployment.yaml
+          # 如果沒有 kustomize，直接修改 deployment-multi.yaml
+          sed -i "s|image:.*my-blog-project.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG|" deployment-multi.yaml
+          sed -i "s|image:.*jekyll-site.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG|" deployment-multi.yaml
         fi
         
         echo "✅ 映像標籤更新為: $IMAGE_TAG"
@@ -151,7 +153,7 @@ jobs:
     - name: ⏳ Wait for deployment
       run: |
         echo "等待部署完成..."
-        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        kubectl rollout status deployment/my-blog-project-multi -n ${{ env.K8S_NAMESPACE }} --timeout=300s
         echo "✅ 部署完成"
         
     - name: 📊 Verify deployment
@@ -163,15 +165,15 @@ jobs:
         
         echo ""
         echo "=== Pods ==="
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-multi
         
         echo ""
         echo "=== Services ==="
-        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-multi
         
         echo ""
         echo "=== Deployments ==="
-        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-multi
         
         echo ""
         echo "=== Service Endpoints ==="
