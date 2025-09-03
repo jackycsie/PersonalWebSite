@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  jekyll-site:
+    build: .
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - /app/vendor
+      - /app/.bundle
+    environment:
+      - JEKYLL_ENV=development
+    restart: unless-stopped
+    container_name: jacky-personal-site-dev
+    command: bundle exec jekyll serve --host 0.0.0.0 --port 4000 --livereload --livereload-port 35729

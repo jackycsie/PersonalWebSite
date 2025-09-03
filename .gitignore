@@ -21,6 +21,13 @@ wheels/
 *.egg
 MANIFEST
 
+# Jekyll
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+vendor/
+
 # Virtual environments
 .env
 .venv
@@ -49,10 +56,110 @@ Thumbs.db
 # Docker
 .dockerignore
 
+# Kubernetes
+*.kubeconfig
+*.yaml.bak
+
 # Logs
 *.log
+logs/
 
-# Testing
-.pytest_cache/
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ruby
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples/
+/test/tmp/
+/test/version_tmp/
+/tmp/
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+*.zip
+
+# Test coverage
 .coverage
 htmlcov/
+.tox/
+.pytest_cache/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Project specific
+# 忽略舊的目錄結構
+jackycsie.github.io/
+jekyll-site/
+
+# 保留模組目錄但忽略建置產物
+modules/*/build/
+modules/*/dist/
+modules/*/node_modules/
+modules/*/vendor/
+modules/*/_site/
+modules/*/.sass-cache/
+modules/*/.jekyll-cache/
+modules/*/.jekyll-metadata
