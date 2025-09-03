@@ -1,0 +1,21 @@
+{
+  "TargetCapacity": 2,
+  "OnDemandTargetCapacity": 0,
+  "SpotMaintenanceStrategies": {
+    "CapacityRebalance": {
+      "ReplacementStrategy": "launch"
+    }
+  },
+  "LaunchTemplateConfigs": [
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateId": "lt-067f2579ae16e0956",
+        "Version": "11"
+      }
+    }
+  ],
+  "Type": "maintain",
+  "IamFleetRole": "arn:aws:iam::728951503024:role/aws-ec2-spot-fleet-tagging-role",
+  "AllocationStrategy": "lowestPrice",
+  "InstanceInterruptionBehavior": "terminate"
+}
