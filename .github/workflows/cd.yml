@@ -69,29 +69,39 @@ jobs:
         kubectl cluster-info
         echo "✅ kubectl 連接正常"
         
-    - name: 🧹 Cleanup existing resources
+    - name: 🧹 Force cleanup existing resources
       run: |
-        echo "檢查並清理已存在的資源..."
+        echo "🧹 強制清理所有現有資源..."
         
-        # 使用清理腳本
-        if [ -f "scripts/cleanup.sh" ]; then
-          echo "使用清理腳本..."
-          ./scripts/cleanup.sh
+        # 檢查命名空間是否存在
+        if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🗑️  強制刪除命名空間: ${{ env.K8S_NAMESPACE }}"
+          
+          # 強制刪除所有資源
+          kubectl delete all --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete deployment --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete service --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete configmap --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete secret --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete pvc --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete pv --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          
+          # 強制刪除命名空間
+          kubectl delete namespace ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          
+          # 等待命名空間完全刪除
+          echo "⏳ 等待命名空間完全刪除..."
+          while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
+            echo "等待命名空間 ${{ env.K8S_NAMESPACE }} 完全刪除..."
+            sleep 5
+          done
+          
+          echo "✅ 命名空間 ${{ env.K8S_NAMESPACE }} 已完全刪除"
         else
-          echo "手動清理資源..."
-          # 檢查並刪除命名空間（這會刪除其中的所有資源）
-          if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
-            echo "刪除命名空間: ${{ env.K8S_NAMESPACE }}"
-            kubectl delete namespace ${{ env.K8S_NAMESPACE }}
-            # 等待命名空間完全刪除
-            while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
-              echo "等待命名空間刪除..."
-              sleep 5
-            done
-          fi
+          echo "ℹ️  命名空間 ${{ env.K8S_NAMESPACE }} 不存在，跳過清理"
         fi
         
-        echo "✅ 資源清理完成"
+        echo "🎉 強制清理完成！"
         
     - name: 🔐 Create ECR authentication secret
       run: |
