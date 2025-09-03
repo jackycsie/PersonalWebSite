@@ -126,20 +126,21 @@ jobs:
       run: |
         echo "部署 Kubernetes 資源..."
         
-        # 使用多容器配置部署
+        # 暫時使用單容器配置部署，直到多容器配置問題解決
         if command -v kustomize &> /dev/null; then
-          echo "使用 Kustomize 部署多容器配置..."
-          kubectl apply -k k8s/kustomization-multi.yaml
+          echo "使用 Kustomize 部署單容器配置..."
+          kubectl apply -k k8s/
         else
-          echo "使用 kubectl 部署多容器配置..."
+          echo "使用 kubectl 部署單容器配置..."
           # 按順序應用配置文件
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/deployment-multi.yaml
-          kubectl apply -f k8s/service-multi.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
         fi
         
-        echo "✅ 多容器資源部署完成"
+        echo "✅ 單容器資源部署完成"
+        echo "⚠️  多容器配置暫時跳過，等待路徑問題解決"
         
     - name: ⏳ Wait for deployment
       run: |
