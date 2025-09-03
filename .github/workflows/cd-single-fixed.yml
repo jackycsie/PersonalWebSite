@@ -58,11 +58,21 @@ jobs:
         chmod +x kubectl
         sudo mv kubectl /usr/local/bin/
         
-    - name: 🔐 Configure kubectl for EKS
+    - name: 🔐 Setup kubectl config
       run: |
-        echo "配置 kubectl 連接到 EKS 集群..."
-        # 請將 your-cluster-name 替換為您的實際 EKS 集群名稱
-        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name your-cluster-name
+        echo "設置 kubectl 配置..."
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+        echo "kubeconfig 設置完成"
+        
+    - name: 🔐 Configure kubectl for EC2 K8s
+      run: |
+        echo "配置 kubectl 連接到 EC2 Kubernetes 集群..."
+        echo "檢查 kubectl 配置..."
+        kubectl config view
+        echo "檢查集群連接..."
+        kubectl cluster-info
         
     - name: ⚙️ Verify kubectl access
       run: |
