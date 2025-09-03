@@ -1,65 +1,54 @@
-name: CD - Deploy to AWS K8s
+name: 🚀 Deploy Single Container (Jekyll Only)
 
 on:
   push:
-    branches: [ main ]  # 只有 main 分支觸發部署
-  workflow_dispatch:    # 允許手動觸發
+    branches: [ main ]
+  workflow_dispatch:
 
 env:
   AWS_REGION: ap-east-2
-  ECR_REPOSITORY: my-blog-project
+  ECR_REPOSITORY: jekyll-site
   K8S_NAMESPACE: my-blog-project
-  DEPLOYMENT_NAME: my-blog-project
+  DEPLOYMENT_NAME: my-blog-project-single
 
 jobs:
   deploy:
-    runs-on: self-hosted  # 使用 self-hosted runner
+    runs-on: self-hosted
     
     steps:
-    - name: 📦 Checkout code
+    - name: 📥 Checkout code
       uses: actions/checkout@v4
       
-    - name: 🔑 Configure AWS credentials
+    - name: 🔐 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: 🐳 Get ECR login token
-      id: ecr-login
-      run: |
-        echo "登入 AWS ECR..."
-        aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
-        echo "✅ ECR 登入成功"
-        
-    - name: 🏗️ Build and push Docker images
-      id: build-images
+    - name: 🔑 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: 🏗️ Build and push Docker image
+      id: build-image
       env:
         ECR_REGISTRY: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        echo "建置 FastAPI 應用映像..."
-        docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
-        docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
-        
         echo "建置 Jekyll 網站映像..."
         docker build -f jekyll-site/Dockerfile.ultra-simple -t $ECR_REGISTRY/jekyll-site:$IMAGE_TAG jekyll-site/
         docker build -f jekyll-site/Dockerfile.ultra-simple -t $ECR_REGISTRY/jekyll-site:latest jekyll-site/
         
         echo "確保 ECR 倉庫存在..."
-        aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} || \
         aws ecr describe-repositories --repository-names jekyll-site --region ${{ env.AWS_REGION }} || \
         aws ecr create-repository --repository-name jekyll-site --region ${{ env.AWS_REGION }}
         
-        echo "推送所有映像到 ECR..."
-        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
-        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        echo "推送 Jekyll 映像到 ECR..."
         docker push $ECR_REGISTRY/jekyll-site:$IMAGE_TAG
         docker push $ECR_REGISTRY/jekyll-site:latest
         
-        echo "✅ 所有映像推送成功"
-        echo "fastapi-image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "✅ Jekyll 映像推送成功"
         echo "jekyll-image=$ECR_REGISTRY/jekyll-site:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
     - name: ⚙️ Verify kubectl access
@@ -69,29 +58,39 @@ jobs:
         kubectl cluster-info
         echo "✅ kubectl 連接正常"
         
-    - name: 🧹 Cleanup existing resources
+    - name: 🧹 Force cleanup existing resources
       run: |
-        echo "檢查並清理已存在的資源..."
+        echo "🧹 強制清理所有現有資源..."
         
-        # 使用清理腳本
-        if [ -f "scripts/cleanup.sh" ]; then
-          echo "使用清理腳本..."
-          ./scripts/cleanup.sh
+        # 檢查命名空間是否存在
+        if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🗑️  強制刪除命名空間: ${{ env.K8S_NAMESPACE }}"
+          
+          # 強制刪除所有資源
+          kubectl delete all --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete deployment --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete service --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete configmap --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete secret --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete pvc --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          kubectl delete pv --all -n ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          
+          # 強制刪除命名空間
+          kubectl delete namespace ${{ env.K8S_NAMESPACE }} --force --grace-period=0 || true
+          
+          # 等待命名空間完全刪除
+          echo "⏳ 等待命名空間完全刪除..."
+          while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
+            echo "等待命名空間 ${{ env.K8S_NAMESPACE }} 完全刪除..."
+            sleep 5
+          done
+          
+          echo "✅ 命名空間 ${{ env.K8S_NAMESPACE }} 已完全刪除"
         else
-          echo "手動清理資源..."
-          # 檢查並刪除命名空間（這會刪除其中的所有資源）
-          if kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
-            echo "刪除命名空間: ${{ env.K8S_NAMESPACE }}"
-            kubectl delete namespace ${{ env.K8S_NAMESPACE }}
-            # 等待命名空間完全刪除
-            while kubectl get namespace ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; do
-              echo "等待命名空間刪除..."
-              sleep 5
-            done
-          fi
+          echo "ℹ️  命名空間 ${{ env.K8S_NAMESPACE }} 不存在，跳過清理"
         fi
         
-        echo "✅ 資源清理完成"
+        echo "🎉 強制清理完成！"
         
     - name: 🔐 Create ECR authentication secret
       run: |
@@ -119,12 +118,10 @@ jobs:
         
         # 使用 kustomize 更新映像標籤
         if command -v kustomize &> /dev/null; then
-          kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
           kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG
         else
-          # 如果沒有 kustomize，直接修改 deployment-multi.yaml
-          sed -i "s|image:.*my-blog-project.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG|" deployment-multi.yaml
-          sed -i "s|image:.*jekyll-site.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG|" deployment-multi.yaml
+          # 如果沒有 kustomize，直接修改 deployment-single.yaml
+          sed -i "s|image:.*jekyll-site.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG|" deployment-single.yaml
         fi
         
         echo "✅ 映像標籤更新為: $IMAGE_TAG"

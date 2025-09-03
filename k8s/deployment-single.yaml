@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-blog-project-single
+  namespace: my-blog-project
+  labels:
+    app: my-blog-project-single
+    version: "1.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: my-blog-project-single
+  template:
+    metadata:
+      labels:
+        app: my-blog-project-single
+        version: "1.0"
+    spec:
+      imagePullSecrets:
+      - name: ecr-secret
+      containers:
+      # 只保留 Jekyll 網站容器
+      - name: jekyll-site
+        image: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jekyll-site:latest
+        ports:
+        - name: jekyll
+          containerPort: 4000
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "150m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: jekyll
+          initialDelaySeconds: 90
+          periodSeconds: 20
+          timeoutSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: jekyll
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 3
+        env:
+        - name: JEKYLL_ENV
+          value: "production"
+        - name: APP_NAME
+          value: "jekyll-site"

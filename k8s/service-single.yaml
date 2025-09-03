@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jekyll-site
+  namespace: my-blog-project
+  labels:
+    app: my-blog-project-single
+    service: jekyll
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    targetPort: jekyll
+    nodePort: 30081  # 只保留 30081 端口
+    protocol: TCP
+  selector:
+    app: my-blog-project-single
+  sessionAffinity: None
