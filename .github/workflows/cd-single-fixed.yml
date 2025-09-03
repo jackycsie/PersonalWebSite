@@ -1,0 +1,246 @@
+name: 🚀 Deploy Single Container (Jekyll Only) - Fixed
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-east-2
+  ECR_REPOSITORY: jekyll-site
+  K8S_NAMESPACE: my-blog-project
+  DEPLOYMENT_NAME: my-blog-project-single
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest  # 使用 GitHub-hosted runner
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: 🔑 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: 🏗️ Build and push Docker image
+      id: build-image
+      env:
+        ECR_REGISTRY: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "建置 Jekyll 網站映像..."
+        docker build -f jekyll-site/Dockerfile.ultra-simple -t $ECR_REGISTRY/jekyll-site:$IMAGE_TAG jekyll-site/
+        docker build -f jekyll-site/Dockerfile.ultra-simple -t $ECR_REGISTRY/jekyll-site:latest jekyll-site/
+        
+        echo "確保 ECR 倉庫存在..."
+        aws ecr describe-repositories --repository-names jekyll-site --region ${{ env.AWS_REGION }} || \
+        aws ecr create-repository --repository-name jekyll-site --region ${{ env.AWS_REGION }}
+        
+        echo "推送 Jekyll 映像到 ECR..."
+        docker push $ECR_REGISTRY/jekyll-site:$IMAGE_TAG
+        docker push $ECR_REGISTRY/jekyll-site:latest
+        
+        echo "✅ Jekyll 映像推送成功"
+        echo "jekyll-image=$ECR_REGISTRY/jekyll-site:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        
+    - name: 🔧 Setup kubectl
+      run: |
+        echo "安裝 kubectl..."
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+    - name: 🔐 Configure kubectl for EKS
+      run: |
+        echo "配置 kubectl 連接到 EKS 集群..."
+        # 請將 your-cluster-name 替換為您的實際 EKS 集群名稱
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name your-cluster-name
+        
+    - name: ⚙️ Verify kubectl access
+      run: |
+        echo "檢查 kubectl 連接..."
+        kubectl version --client
+        kubectl cluster-info
+        echo "✅ kubectl 連接正常"
+        
+    - name: 🔍 Check current deployment status
+      run: |
+        echo "🔍 檢查當前部署狀態..."
+        
+        # 確保命名空間存在
+        kubectl apply -f k8s/namespace.yaml
+        
+        # 檢查當前部署是否存在
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "📊 發現現有部署，將執行滾動更新..."
+          echo "=== 當前部署狀態 ==="
+          kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "=== 當前 Pod 狀態 ==="
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        else
+          echo "🆕 沒有現有部署，將創建新部署..."
+        fi
+        
+        # 創建 ECR secret（如果不存在）
+        if ! kubectl get secret ecr-secret -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🔐 創建 ECR 認證 secret..."
+          kubectl create secret docker-registry ecr-secret \
+            --docker-server=728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com \
+            --docker-username=AWS \
+            --docker-password=$(aws ecr get-login-password --region ${{ env.AWS_REGION }}) \
+            --docker-email=deploy@myblog.com \
+            -n ${{ env.K8S_NAMESPACE }}
+          echo "✅ ECR secret 創建成功"
+        else
+          echo "✅ ECR secret 已存在"
+        fi
+        
+    - name: 🎯 Update image tag in Kustomization
+      env:
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "更新 Kustomization 中的映像標籤..."
+        cd k8s
+        
+        # 使用 kustomize 更新映像標籤
+        if command -v kustomize &> /dev/null; then
+          kustomize edit set image 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG
+        else
+          # 如果沒有 kustomize，直接修改 deployment-single.yaml
+          sed -i "s|image:.*jekyll-site.*|image: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/jekyll-site:$IMAGE_TAG|" deployment-single.yaml
+        fi
+        
+        echo "✅ 映像標籤更新為: $IMAGE_TAG"
+        
+    - name: 📋 Deploy Kubernetes resources
+      run: |
+        echo "部署 Kubernetes 資源..."
+        
+        # 使用單容器配置部署
+        if command -v kustomize &> /dev/null; then
+          echo "使用 Kustomize 部署單容器配置..."
+          kubectl apply -k k8s/kustomization-single.yaml
+        else
+          echo "使用 kubectl 部署單容器配置..."
+          # 按順序應用配置文件
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/deployment-single.yaml
+          kubectl apply -f k8s/service-single.yaml
+        fi
+        
+        echo "✅ 單容器資源部署完成"
+        
+    - name: ⏳ Wait for deployment
+      run: |
+        echo "等待部署完成..."
+        
+        # 先檢查 Pod 狀態
+        echo "=== 檢查 Pod 狀態 ==="
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o wide
+        
+        echo ""
+        echo "=== 檢查 Pod 事件 ==="
+        kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by='.lastTimestamp' | grep -E "(${{ env.DEPLOYMENT_NAME }}|Failed|Error)" | tail -10
+        
+        echo ""
+        echo "=== 檢查部署狀態 ==="
+        kubectl describe deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+        
+        # 等待部署完成，增加超時時間
+        echo ""
+        echo "開始等待部署完成..."
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=600s
+        echo "✅ 部署完成"
+        
+    - name: 🏥 Health check
+      run: |
+        echo "🏥 執行健康檢查..."
+        
+        # 等待服務就緒
+        echo "⏳ 等待服務就緒..."
+        sleep 15
+        
+        # 檢查服務是否響應
+        echo "🔍 檢查服務響應..."
+        POD_NAME=$(kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }} -o jsonpath='{.items[0].metadata.name}')
+        
+        if [ -n "$POD_NAME" ]; then
+          echo "📊 測試 Pod: $POD_NAME"
+          
+          # 檢查 Pod 是否運行
+          if kubectl get pod $POD_NAME -n ${{ env.K8S_NAMESPACE }} | grep -q "Running"; then
+            echo "✅ Pod 狀態正常"
+            
+            # 檢查服務端口
+            if kubectl exec -n ${{ env.K8S_NAMESPACE }} $POD_NAME -- curl -s http://localhost:4000/ >/dev/null 2>&1; then
+              echo "✅ 服務健康檢查通過"
+            else
+              echo "⚠️  服務健康檢查未通過，但 Pod 已運行"
+            fi
+          else
+            echo "❌ Pod 狀態異常"
+            kubectl describe pod $POD_NAME -n ${{ env.K8S_NAMESPACE }}
+          fi
+        else
+          echo "❌ 沒有找到相關的 Pod"
+        fi
+        
+    - name: 📊 Verify deployment
+      run: |
+        echo "驗證部署狀態..."
+        
+        echo "=== Namespace ==="
+        kubectl get namespace ${{ env.K8S_NAMESPACE }}
+        
+        echo ""
+        echo "=== Pods ==="
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        
+        echo ""
+        echo "=== Services ==="
+        kubectl get services -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        
+        echo ""
+        echo "=== Deployments ==="
+        kubectl get deployments -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+        
+        echo ""
+        echo "=== Service Endpoints ==="
+        kubectl get endpoints -n ${{ env.K8S_NAMESPACE }}
+        
+        echo ""
+        echo "🎉 部署驗證完成！"
+        echo ""
+        echo "🌐 訪問方式："
+        echo "   Jekyll 網站: http://[NODE-IP]:30081"
+        
+    - name: 🔄 Rollback on failure
+      if: failure()
+      run: |
+        echo "❌ 部署失敗，執行回滾..."
+        
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} >/dev/null 2>&1; then
+          echo "🔄 回滾到上一個版本..."
+          kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }}
+          
+          echo "⏳ 等待回滾完成..."
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ 回滾成功"
+          else
+            echo "❌ 回滾失敗，請手動檢查"
+          fi
+        else
+          echo "ℹ️  沒有部署可以回滾"
+        fi

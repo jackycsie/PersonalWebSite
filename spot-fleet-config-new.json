@@ -1,0 +1,22 @@
+{
+  "TargetCapacity": 3,
+  "OnDemandTargetCapacity": 0,
+  "LaunchTemplateConfigs": [
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateId": "lt-067f2579ae16e0956",
+        "Version": "12"
+      },
+      "Overrides": [
+        {
+          "InstanceType": "t3.small",
+          "SubnetId": "subnet-0772cdb1ebc4ea4a3"
+        }
+      ]
+    }
+  ],
+  "Type": "maintain",
+  "IamFleetRole": "arn:aws:iam::728951503024:role/aws-ec2-spot-fleet-tagging-role",
+  "AllocationStrategy": "lowestPrice",
+  "InstanceInterruptionBehavior": "stop"
+}
