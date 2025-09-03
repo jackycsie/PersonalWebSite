@@ -153,7 +153,23 @@ jobs:
     - name: ⏳ Wait for deployment
       run: |
         echo "等待部署完成..."
-        kubectl rollout status deployment/my-blog-project-multi -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        
+        # 先檢查 Pod 狀態
+        echo "=== 檢查 Pod 狀態 ==="
+        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=my-blog-project-multi -o wide
+        
+        echo ""
+        echo "=== 檢查 Pod 事件 ==="
+        kubectl get events -n ${{ env.K8S_NAMESPACE }} --sort-by='.lastTimestamp' | grep -E "(my-blog-project-multi|Failed|Error)" | tail -10
+        
+        echo ""
+        echo "=== 檢查部署狀態 ==="
+        kubectl describe deployment my-blog-project-multi -n ${{ env.K8S_NAMESPACE }}
+        
+        # 等待部署完成，增加超時時間
+        echo ""
+        echo "開始等待部署完成..."
+        kubectl rollout status deployment/my-blog-project-multi -n ${{ env.K8S_NAMESPACE }} --timeout=600s
         echo "✅ 部署完成"
         
     - name: 📊 Verify deployment
