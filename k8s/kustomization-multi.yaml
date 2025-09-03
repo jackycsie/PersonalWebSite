@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 資源部署順序
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - deployment-multi.yaml
+  - service-multi.yaml
+
+# 命名空間
+namespace: my-blog-project
+
+# 通用標籤
+commonLabels:
+  project: my-blog-project-multi
+  managed-by: kustomize
+
+# 映像替換
+images:
+  - name: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/my-blog-project
+    newTag: latest
+  - name: 728951503024.dkr.ecr.ap-east-2.amazonaws.com/jackycsie-github-io
+    newTag: latest

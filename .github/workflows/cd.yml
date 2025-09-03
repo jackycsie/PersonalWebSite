@@ -33,22 +33,29 @@ jobs:
         aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         echo "✅ ECR 登入成功"
         
-    - name: 🏗️ Build and push Docker image
-      id: build-image
+    - name: 🏗️ Build and push Docker images
+      id: build-images
       env:
         ECR_REGISTRY: 728951503024.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        echo "建置 Docker 映像..."
+        echo "建置 FastAPI 應用映像..."
         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
+        
+        echo "建置 Jekyll 網站映像..."
+        docker build -f jackycsie.github.io/Dockerfile.prod -t $ECR_REGISTRY/jackycsie-github-io:$IMAGE_TAG jackycsie.github.io/
+        docker build -f jackycsie.github.io/Dockerfile.prod -t $ECR_REGISTRY/jackycsie-github-io:latest jackycsie.github.io/
         
         echo "推送映像到 ECR..."
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        docker push $ECR_REGISTRY/jackycsie-github-io:$IMAGE_TAG
+        docker push $ECR_REGISTRY/jackycsie-github-io:latest
         
-        echo "✅ 映像推送成功"
-        echo "image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "✅ 所有映像推送成功"
+        echo "fastapi-image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "jekyll-image=$ECR_REGISTRY/jackycsie-github-io:$IMAGE_TAG" >> $GITHUB_OUTPUT
         
     - name: ⚙️ Verify kubectl access
       run: |
@@ -119,20 +126,20 @@ jobs:
       run: |
         echo "部署 Kubernetes 資源..."
         
-        # 使用 kustomize 部署（如果可用）
+        # 使用多容器配置部署
         if command -v kustomize &> /dev/null; then
-          echo "使用 Kustomize 部署..."
-          kubectl apply -k k8s/
+          echo "使用 Kustomize 部署多容器配置..."
+          kubectl apply -k k8s/kustomization-multi.yaml
         else
-          echo "使用 kubectl 部署..."
+          echo "使用 kubectl 部署多容器配置..."
           # 按順序應用配置文件
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/deployment-multi.yaml
+          kubectl apply -f k8s/service-multi.yaml
         fi
         
-        echo "✅ 資源部署完成"
+        echo "✅ 多容器資源部署完成"
         
     - name: ⏳ Wait for deployment
       run: |
